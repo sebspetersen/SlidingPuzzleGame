@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sliding Tile Puzzle</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            display: flex;
+            gap: 2rem;
+        }
+        .puzzle {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+            width: 300px;
+            height: 300px;
+        }
+        .tile {
+            background-color: #3700B3;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2rem;
+            cursor: pointer;
+        }
+        .leaderboard {
+            width: 200px;
+        }
+        .leaderboard h2 {
+            margin-top: 0;
+        }
+        #timer {
+            margin-top: 1rem;
+            font-size: 1.2rem;
+        }
+        #nameInput {
+            display: none;
+            margin-top: 1rem;
+        }
+        input, button {
+            background-color: #3700B3;
+            color: #ffffff;
+            border: none;
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div>
+            <div class="puzzle" id="puzzle"></div>
+            <div id="timer">Time: 0s</div>
+            <div id="nameInput">
+                <input type="text" id="name" placeholder="Enter your name">
+                <button onclick="submitName()">Submit</button>
+            </div>
+        </div>
+        <div class="leaderboard">
+            <h2>Leaderboard</h2>
+            <ol id="leaderboard"></ol>
+        </div>
+    </div>
+
+    <script>
+        const puzzle = document.getElementById('puzzle');
+        const timerDisplay = document.getElementById('timer');
+        const nameInput = document.getElementById('nameInput');
+        const leaderboard = document.getElementById('leaderboard');
+
+        const API_KEY = '$2a$10$vLVE0Y7gaqRXdY9RBmuSxuWrdCLVUUaBuVqME8x8dG92za0.xNetK';
+        const BIN_ID = '668d3fe5acd3cb34a8639a19';
+
+        let tiles = [];
+        let emptyTile = 8;
+        let isPlaying = false;
+        let startTime;
+        let timerInterval;
+
+        function initPuzzle() {
+            puzzle.innerHTML = '';
+            tiles = Array.from({ length: 8 }, (_, i) => i + 1);
+            tiles.push(null);
+            shuffleTiles();
+            renderPuzzle();
+            loadLeaderboard();
+        }
+
+        function shuffleTiles() {
+            do {
+                for (let i = tiles.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+                }
+                emptyTile = tiles.indexOf(null);
+            } while (!isSolvable() || isSolved());
+        }
+
+        function isSolvable() {
+            let invCount = 0;
+            for (let i = 0; i < 9; i++) {
+                for (let j = i + 1; j < 9; j++) {
+                    if (tiles[i] && tiles[j] && tiles[i] > tiles[j]) {
+                        invCount++;
+                    }
+                }
+            }
+            const emptyRowFromBottom = 3 - Math.floor(emptyTile / 3);
+            return (invCount % 2 === 0) === (emptyRowFromBottom % 2 === 1);
+        }
+
+        function moveTile(index) {
+            if (!isPlaying) {
+                isPlaying = true;
+                startTime = Date.now();
+                timerInterval = setInterval(updateTimer, 1000);
+            }
+
+            const possibleMoves = getPossibleMoves();
+            if (possibleMoves.includes(index)) {
+                [tiles[emptyTile], tiles[index]] = [tiles[index], tiles[emptyTile]];
+                emptyTile = index;
+                renderPuzzle();
+                if (isSolved()) {
+                    clearInterval(timerInterval);
+                    nameInput.style.display = 'block';
+                }
+            }
+        }
+
+        function getPossibleMoves() {
+            const moves = [];
+            if (emptyTile % 3 > 0) moves.push(emptyTile - 1); // Left
+            if (emptyTile % 3 < 2) moves.push(emptyTile + 1); // Right
+            if (emptyTile > 2) moves.push(emptyTile - 3); // Up
+            if (emptyTile < 6) moves.push(emptyTile + 3); // Down
+            return moves;
+        }
+
+        function renderPuzzle() {
+            puzzle.innerHTML = '';
+            tiles.forEach((num, index) => {
+                const tile = document.createElement('div');
+                tile.classList.add('tile');
+                if (num !== null) {
+                    tile.textContent = num;
+                    tile.addEventListener('click', () => moveTile(index));
+                } else {
+                    tile.style.backgroundColor = '#121212';
+                }
+                puzzle.appendChild(tile);
+            });
+        }
+
+        function isSolved() {
+            return tiles.every((num, index) => num === null || num === index + 1);
+        }
+
+        function updateTimer() {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            timerDisplay.textContent = `Time: ${elapsed}s`;
+        }
+
+        function submitName() {
+            const name = document.getElementById('name').value;
+            if (name) {
+                const time = Math.floor((Date.now() - startTime) / 1000);
+                updateLeaderboard(name, time);
+                nameInput.style.display = 'none';
+                isPlaying = false;
+                initPuzzle();
+            }
+        }
+
+        async function updateLeaderboard(name, time) {
+            try {
+                const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+                    method: 'GET',
+                    headers: {
+                        'X-Master-Key': API_KEY
+                    }
+                });
+                const data = await response.json();
+                let leaders = data.record.leaders || [];
+                
+                leaders.push({ name, time });
+                leaders.sort((a, b) => a.time - b.time);
+                leaders = leaders.slice(0, 5);
+
+                await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': API_KEY
+                    },
+                    body: JSON.stringify({ leaders })
+                });
+
+                displayLeaderboard(leaders);
+            } catch (error) {
+                console.error('Error updating leaderboard:', error);
+            }
+        }
+
+        async function loadLeaderboard() {
+            try {
+                const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+                    method: 'GET',
+                    headers: {
+                        'X-Master-Key': API_KEY
+                    }
+                });
+                const data = await response.json();
+                const leaders = data.record.leaders || [];
+                displayLeaderboard(leaders);
+            } catch (error) {
+                console.error('Error loading leaderboard:', error);
+            }
+        }
+
+        function displayLeaderboard(leaders) {
+            leaderboard.innerHTML = leaders.map(({ name, time }) => `<li>${name}: ${time}s</li>`).join('');
+        }
+
+        initPuzzle();
+    </script>
+</body>
+</html>
